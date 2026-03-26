@@ -6,6 +6,7 @@
   <title>Trubis</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <script src="/three.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -576,77 +577,370 @@ let silenceTimer   = null;
 let subtitleTimer  = null;
 const SILENCE_DELAY = 2500;
 
-// ─── Orb ─────────────────────────────────────────────────────────────────────
+// ─── Neural Network 3D (Three.js) ────────────────────────────────────────────
 const ORB_CFG = {
-  idle:      { primary:'#7c6af7', secondary:'#2a1580', rgb:[124,106,247], speed:1.0,  label:'STANDBY'   },
-  listening: { primary:'#00ff88', secondary:'#005c35', rgb:[0,255,136],   speed:2.4,  label:'POČÚVAM'   },
-  thinking:  { primary:'#ffaa00', secondary:'#7a4800', rgb:[255,170,0],   speed:3.0,  label:'SPRACÚVAM' },
-  speaking:  { primary:'#00d4ff', secondary:'#003d55', rgb:[0,212,255],   speed:2.0,  label:'HOVORÍM'   },
+  idle:      { primary:'#7c6af7', color:0x7c6af7, speed:1.0,  label:'STANDBY'   },
+  listening: { primary:'#00ff88', color:0x00ff88, speed:2.4,  label:'POČÚVAM'   },
+  thinking:  { primary:'#cc44ff', color:0xcc44ff, speed:3.0,  label:'SPRACÚVAM' },
+  speaking:  { primary:'#00d4ff', color:0x00d4ff, speed:2.0,  label:'HOVORÍM'   },
 };
 let orbState = 'idle', orbTime = 0;
-let orbCanvas, orbCtx, orbRings = [], orbNodes = [];
-let galaxyStars = [];
+let threeScene, threeCamera, threeRenderer;
+let neuralGroup, coreGroup;
+let allConnLines = [], pulseRings = [], chatOrbiters = [];
+let rotX = 0.3, rotY = 0;
+let dragOn = false, lastMX = 0, lastMY = 0, velX = 0, velY = 0;
+
+// HSL (0-360, 0-100, 0-100) → 0xRRGGBB integer
+function hslInt(h, s, l) {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+  };
+  return (f(0) << 16) | (f(8) << 8) | f(4);
+}
+
+function getCatColor(catId) {
+  if (catId === '__uncat__') return 0x3a3a72;
+  const store = JSON.parse(localStorage.getItem('tv_cat_colors') || '{}');
+  if (!store[catId]) {
+    store[catId] = hslInt((Object.keys(store).length * 137.508) % 360, 88, 62);
+    localStorage.setItem('tv_cat_colors', JSON.stringify(store));
+  }
+  return store[catId];
+}
+
+function mkSph(r, col, op, add) {
+  return new THREE.Mesh(
+    new THREE.SphereGeometry(r, 20, 20),
+    new THREE.MeshBasicMaterial({
+      color: col, transparent: true, opacity: op,
+      blending: add ? THREE.AdditiveBlending : THREE.NormalBlending,
+      depthWrite: !add,
+    })
+  );
+}
+
+function mkNode(r, col) {
+  const g = new THREE.Group();
+  g.add(mkSph(r,       col, 1.00,  false));
+  g.add(mkSph(r*2.2,   col, 0.22,  true));
+  g.add(mkSph(r*4.2,   col, 0.09,  true));
+  g.add(mkSph(r*7.5,   col, 0.035, true));
+  return g;
+}
+
+function mkCoreGold(r) {
+  const g = new THREE.Group();
+  // Metalická zlatá guľa — reaguje na svetlo
+  g.add(new THREE.Mesh(
+    new THREE.SphereGeometry(r, 48, 48),
+    new THREE.MeshStandardMaterial({
+      color:     0xd4a017,
+      metalness: 1.0,
+      roughness: 0.18,
+    })
+  ));
+  // Teplo-zlaté glow vrstvy
+  g.add(mkSph(r*2.2, 0xffc200, 0.24, true));
+  g.add(mkSph(r*4.2, 0xff9500, 0.10, true));
+  g.add(mkSph(r*7.5, 0xff7000, 0.04, true));
+  return g;
+}
+
+function mkLine(p1, p2, col, op) {
+  const l = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([p1, p2]),
+    new THREE.LineBasicMaterial({
+      color: col, transparent: true, opacity: op,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    })
+  );
+  l.userData.baseOp = op;
+  l.userData.phase  = Math.random() * Math.PI * 2;
+  return l;
+}
+
+// Fibonacci sphere point distribution
+function fibSphere(n, r) {
+  if (n === 1) {
+    // n=1 by padol na Y pól — daj na rovník kde je pohyb viditeľný
+    return [new THREE.Vector3(r * 0.866, r * 0.3, r * 0.5)];
+  }
+  const pts = [], g = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < n; i++) {
+    // Mierne odsaď od pólov aby body neboli na Y-osi
+    const y  = (1 - (i / (n - 1)) * 2) * 0.88;
+    const rr = Math.sqrt(Math.max(0, 1 - y * y));
+    const t  = g * i + 1.2;
+    pts.push(new THREE.Vector3(Math.cos(t) * rr * r, y * r, Math.sin(t) * rr * r));
+  }
+  return pts;
+}
+
+function disposeObj(o) {
+  o.children.slice().forEach(disposeObj);
+  o.geometry?.dispose();
+  if (o.material) {
+    Array.isArray(o.material) ? o.material.forEach(m => m.dispose()) : o.material.dispose();
+  }
+}
+
+// Pridá chat uzol s orbitálnou animáciou okolo daného hubu
+function addOrbiter(hubVec, r, col, sizeMult) {
+  const cn = mkNode(0.09 * sizeMult, col);
+  neuralGroup.add(cn);
+
+  // Dynamická línia hub → chat (aktualizovaná každý frame)
+  const arr = new Float32Array(6);
+  arr[0] = hubVec.x; arr[1] = hubVec.y; arr[2] = hubVec.z;
+  arr[3] = hubVec.x; arr[4] = hubVec.y; arr[5] = hubVec.z;
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  const line = new THREE.Line(lineGeo,
+    new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.22,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+  line.userData.baseOp = 0.22;
+  line.userData.phase  = Math.random() * Math.PI * 2;
+  neuralGroup.add(line);
+  allConnLines.push(line);
+
+  chatOrbiters.push({
+    mesh:  cn,
+    line,
+    hub:   hubVec.clone(),
+    r:     r * (0.7 + Math.random() * 0.6),
+    theta: Math.random() * Math.PI * 2,
+    phi:   Math.acos(2 * Math.random() - 1),
+    speed: (0.005 + Math.random() * 0.006) * (Math.random() > 0.5 ? 1 : -1),
+  });
+}
+
+function clearNetwork() {
+  if (!neuralGroup) return;
+  neuralGroup.children.slice().forEach(disposeObj);
+  while (neuralGroup.children.length) neuralGroup.remove(neuralGroup.children[0]);
+  allConnLines  = [];
+  pulseRings    = [];
+  chatOrbiters  = [];
+  coreGroup     = null;
+}
+
+function buildNetwork(chats, cats, map) {
+  if (!neuralGroup) return;
+  clearNetwork();
+  const CR = 0.36, HR = 0.18, CHR = 0.09;
+  const HD = 3.7,  CD = 1.25;
+  const O  = new THREE.Vector3();
+
+  // Core (Tarvis) — metalická zlatá guľa
+  coreGroup = mkCoreGold(CR);
+  neuralGroup.add(coreGroup);
+
+  const uncatC = chats.filter(c => !map[c.id]);
+  const total  = cats.length + (uncatC.length ? 1 : 0);
+  if (!total) return;
+
+  const hubPos = fibSphere(total, HD);
+  let hi = 0;
+
+  cats.forEach(cat => {
+    const col = getCatColor(cat.id);
+    const pos = hubPos[hi++];
+    const cc  = chats.filter(c => map[c.id] === cat.id);
+
+    const hub = mkNode(HR, col);
+    hub.position.copy(pos);
+    neuralGroup.add(hub);
+
+    // Malé svetielko + bodový konektor pri uzle
+    const hubLight = new THREE.PointLight(col, 2.2, 4.5);
+    hubLight.position.copy(pos);
+    neuralGroup.add(hubLight);
+    const dot = mkSph(0.055, 0xffffff, 0.95, true);
+    dot.position.copy(pos);
+    neuralGroup.add(dot);
+
+    const cl = mkLine(O, pos, col, 0.30);
+    neuralGroup.add(cl); allConnLines.push(cl);
+
+    cc.forEach(() => addOrbiter(pos, CD, col, 1.0));
+  });
+
+  // Uncategorized cluster
+  if (uncatC.length) {
+    const col = getCatColor('__uncat__');
+    const pos = hubPos[hi++];
+    const hub = mkNode(HR * 0.75, col);
+    hub.position.copy(pos);
+    neuralGroup.add(hub);
+    const hubLight = new THREE.PointLight(col, 1.2, 3.5);
+    hubLight.position.copy(pos);
+    neuralGroup.add(hubLight);
+    const dot = mkSph(0.04, 0xffffff, 0.75, true);
+    dot.position.copy(pos);
+    neuralGroup.add(dot);
+    const cl = mkLine(O, pos, col, 0.15);
+    neuralGroup.add(cl); allConnLines.push(cl);
+    uncatC.forEach(() => addOrbiter(pos, CD, col, 0.75));
+  }
+}
+
+function addBgStars() {
+  const pos = [];
+  for (let i = 0; i < 1200; i++) {
+    const r  = 20 + Math.random() * 60;
+    const th = Math.random() * Math.PI * 2;
+    const ph = Math.acos(2 * Math.random() - 1);
+    pos.push(r*Math.sin(ph)*Math.cos(th), r*Math.sin(ph)*Math.sin(th), r*Math.cos(ph));
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  threeScene.add(new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0x2233bb, size: 0.07, transparent: true, opacity: 0.5,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  })));
+}
 
 function initOrb() {
-  orbCanvas = document.getElementById('orb-canvas');
-  orbCtx    = orbCanvas.getContext('2d');
-  resizeOrb();
-  window.addEventListener('resize', resizeOrb);
-  initGalaxy();
-  for (let i = 0; i < 10; i++) orbNodes.push({
-    angle:  (i/10)*Math.PI*2,
-    radius: 120 + Math.random()*50,
-    size:   2.5 + Math.random()*2,
-    phase:  Math.random()*Math.PI*2,
-    speed:  0.003 + Math.random()*0.003,
+  if (!window.THREE) { console.warn('Three.js not loaded'); return; }
+  const stage  = document.getElementById('stage');
+  const canvas = document.getElementById('orb-canvas');
+
+  threeScene  = new THREE.Scene();
+  threeCamera = new THREE.PerspectiveCamera(54, stage.offsetWidth / stage.offsetHeight, 0.1, 500);
+  threeCamera.position.z = 10.5;
+
+  threeRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  threeRenderer.setSize(stage.offsetWidth, stage.offsetHeight);
+  threeRenderer.setClearColor(0x000000, 0);
+
+  threeScene.add(new THREE.AmbientLight(0x111122, 2));
+
+  neuralGroup = new THREE.Group();
+  threeScene.add(neuralGroup);
+
+  addBgStars();
+  buildNetwork([], getCats(), getCatMap());
+
+  // Responsive resize
+  new ResizeObserver(() => {
+    const w = stage.offsetWidth, h = stage.offsetHeight;
+    if (!w || !h) return;
+    threeCamera.aspect = w / h;
+    threeCamera.updateProjectionMatrix();
+    threeRenderer.setSize(w, h);
+  }).observe(stage);
+
+  // ── Mouse drag ──
+  stage.addEventListener('mousedown', e => {
+    dragOn = true; lastMX = e.clientX; lastMY = e.clientY; velX = velY = 0;
+    e.preventDefault();
   });
+  document.addEventListener('mousemove', e => {
+    if (!dragOn) return;
+    velY = (e.clientX - lastMX) * 0.006;
+    velX = (e.clientY - lastMY) * 0.006;
+    rotY += velY; rotX += velX;
+    lastMX = e.clientX; lastMY = e.clientY;
+  });
+  document.addEventListener('mouseup', () => { dragOn = false; });
+
+  // ── Touch drag ──
+  stage.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      dragOn = true; lastMX = e.touches[0].clientX; lastMY = e.touches[0].clientY; velX = velY = 0;
+    }
+    e.preventDefault();
+  }, { passive: false });
+  stage.addEventListener('touchmove', e => {
+    if (!dragOn || e.touches.length !== 1) return;
+    velY = (e.touches[0].clientX - lastMX) * 0.006;
+    velX = (e.touches[0].clientY - lastMY) * 0.006;
+    rotY += velY; rotX += velX;
+    lastMX = e.touches[0].clientX; lastMY = e.touches[0].clientY;
+    e.preventDefault();
+  }, { passive: false });
+  stage.addEventListener('touchend', () => { dragOn = false; });
+
   requestAnimationFrame(orbTick);
 }
-function resizeOrb() {
-  const s = document.getElementById('stage');
-  orbCanvas.width = s.offsetWidth; orbCanvas.height = s.offsetHeight;
+
+function orbTick() {
+  requestAnimationFrame(orbTick);
+  if (!threeRenderer) return;
+  orbTime += 0.016;
+  const cfg = ORB_CFG[orbState];
+
+  // Auto rotation + inertia
+  if (!dragOn) {
+    velX *= 0.92; velY *= 0.92;
+    rotY += 0.0013 * cfg.speed + velY;
+    rotX += Math.sin(orbTime * 0.17) * 0.00035 * cfg.speed + velX;
+  }
+  neuralGroup.rotation.y = rotY;
+  neuralGroup.rotation.x = rotX;
+
+  // Core pulse — keď thinking: celé jadro zlaté; inak: solid gold + farebný glow
+  if (coreGroup) {
+    const pulse = 1.0 + Math.sin(orbTime * (1.8 + cfg.speed)) * 0.13;
+    coreGroup.scale.setScalar(pulse);
+    if (orbState === 'thinking') {
+      const g1 = new THREE.Color(0xffd700);
+      const g2 = new THREE.Color(0xffaa00);
+      const g3 = new THREE.Color(0xff8800);
+      coreGroup.children.forEach((ch, i) => {
+        if (!ch.material) return;
+        if (i === 0) ch.material.color.copy(g1);
+        else if (i === 1) ch.material.color.copy(g2);
+        else ch.material.color.copy(g3);
+      });
+    } else {
+      const glowC = new THREE.Color(cfg.color);
+      for (let i = 1; i < coreGroup.children.length; i++) {
+        coreGroup.children[i].material?.color.copy(glowC);
+      }
+      // children[0] = MeshStandardMaterial — farbu nemení, ostáva metalická
+    }
+  }
+
+  // Connection line shimmer
+  const sp = 1.2 + cfg.speed * 0.35;
+  allConnLines.forEach(l => {
+    l.material.opacity = Math.max(0.03,
+      l.userData.baseOp * (0.55 + Math.sin(orbTime * sp + l.userData.phase) * 0.45));
+  });
+
+  // Orbitálne chat uzly — každý obieha okolo svojho hubu
+  chatOrbiters.forEach(o => {
+    o.theta += o.speed * cfg.speed;
+    const nx = o.hub.x + o.r * Math.sin(o.phi) * Math.cos(o.theta);
+    const ny = o.hub.y + o.r * Math.cos(o.phi);
+    const nz = o.hub.z + o.r * Math.sin(o.phi) * Math.sin(o.theta);
+    o.mesh.position.set(nx, ny, nz);
+    const pa = o.line.geometry.attributes.position;
+    pa.setXYZ(1, nx, ny, nz);
+    pa.needsUpdate = true;
+  });
+
+  // Pulse rings (state change burst)
+  pulseRings = pulseRings.filter(ring => {
+    ring.t += 0.035;
+    ring.mesh.scale.setScalar(1 + ring.t * 5);
+    ring.mesh.material.opacity = Math.max(0, 0.55 * (1 - ring.t));
+    if (ring.t >= 1) {
+      ring.mesh.geometry.dispose(); ring.mesh.material.dispose();
+      neuralGroup.remove(ring.mesh); return false;
+    }
+    return true;
+  });
+
+  threeRenderer.render(threeScene, threeCamera);
 }
-function initGalaxy() {
-  galaxyStars = [];
-  const ARMS = 3;
 
-  // Husté jadro
-  for (let i = 0; i < 90; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = Math.pow(Math.random(), 1.8) * 55;
-    galaxyStars.push({ x: Math.cos(a)*r, y: Math.sin(a)*r,
-      z: (Math.random()-0.5) * r * 0.65,
-      size: 0.3 + Math.random()*1.8, opacity: 0.3 + Math.random()*0.6,
-      tp: Math.random()*Math.PI*2, ts: 1+Math.random()*2.5, kind:'core',
-      cv: Math.random() });
-  }
-
-  // Špirálovité ramená
-  for (let i = 0; i < 350; i++) {
-    const arm   = i % ARMS;
-    const base  = (arm / ARMS) * Math.PI * 2;
-    const t     = Math.random();
-    const r     = 25 + t * 175;
-    const angle = base + t * Math.PI * 2.8 + (Math.random()-.5) * 0.55;
-    galaxyStars.push({ x: Math.cos(angle)*r, y: Math.sin(angle)*r,
-      z: (Math.random()-0.5) * 20,
-      size: 0.3 + (1-t) * Math.random() * 2.2,
-      opacity: 0.1 + (1 - t*0.65) * Math.random() * 0.75,
-      tp: Math.random()*Math.PI*2, ts: 0.4+Math.random()*1.8, kind:'arm',
-      cv: Math.random() });
-  }
-
-  // Halo
-  for (let i = 0; i < 70; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = 165 + Math.random() * 65;
-    galaxyStars.push({ x: Math.cos(a)*r, y: Math.sin(a)*r,
-      z: (Math.random()-0.5) * 95,
-      size: 0.3 + Math.random()*0.7, opacity: 0.05 + Math.random()*0.2,
-      tp: Math.random()*Math.PI*2, ts: 0.2+Math.random()*0.8, kind:'halo',
-      cv: Math.random() });
-  }
-}
 function setOrbState(state) {
   if (orbState === state) return;
   orbState = state;
@@ -657,132 +951,19 @@ function setOrbState(state) {
   lbl.style.textShadow = `0 0 14px ${c.primary}90`;
   if (state !== 'idle') emitRing();
 }
-function emitRing() { orbRings.push({ r:55, opacity:.75, speed:2 }); }
 
-function orbTick() {
-  requestAnimationFrame(orbTick);
-  orbTime += 0.016;
-  // Auto-resize ak sa zmenil stage
-  const _s = document.getElementById('stage');
-  if (orbCanvas.width !== _s.offsetWidth || orbCanvas.height !== _s.offsetHeight) resizeOrb();
-  const cfg = ORB_CFG[orbState];
-  const ctx = orbCtx;
-  const W = orbCanvas.width, H = orbCanvas.height, cx = W/2, cy = H/2;
-  const [R,G,B] = cfg.rgb;
-  ctx.clearRect(0,0,W,H);
-
-  // grid
-  ctx.strokeStyle=`rgba(${R},${G},${B},0.04)`; ctx.lineWidth=.5;
-  for(let x=0;x<W;x+=36){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=0;y<H;y+=36){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-
-  // radar rings
-  [75,140,205].forEach(r=>{ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.strokeStyle=`rgba(${R},${G},${B},0.06)`;ctx.lineWidth=1;ctx.stroke();});
-
-  // sweep
-  ctx.save(); ctx.translate(cx,cy); ctx.rotate(orbTime*.55);
-  const sw=ctx.createLinearGradient(0,0,210,0);
-  sw.addColorStop(0,`rgba(${R},${G},${B},0.2)`); sw.addColorStop(.6,`rgba(${R},${G},${B},0.04)`); sw.addColorStop(1,`rgba(${R},${G},${B},0)`);
-  ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,210,-0.2,0.2); ctx.closePath(); ctx.fillStyle=sw; ctx.fill();
-  ctx.restore();
-
-  // neural net
-  if(orbState==='thinking'||orbState==='speaking'){
-    orbNodes.forEach((n,i)=>{
-      n.angle+=n.speed*cfg.speed;
-      const nx=cx+Math.cos(n.angle)*n.radius, ny=cy+Math.sin(n.angle)*n.radius;
-      const pulse=0.25+Math.sin(orbTime*4+n.phase)*.18;
-      ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(nx,ny);
-      ctx.strokeStyle=`rgba(${R},${G},${B},${(pulse*.6).toFixed(2)})`;ctx.lineWidth=.8;ctx.stroke();
-      const nb=orbNodes[(i+1)%orbNodes.length];
-      ctx.beginPath();ctx.moveTo(nx,ny);ctx.lineTo(cx+Math.cos(nb.angle)*nb.radius,cy+Math.sin(nb.angle)*nb.radius);
-      ctx.strokeStyle=`rgba(${R},${G},${B},0.1)`;ctx.lineWidth=.5;ctx.stroke();
-      const gw=ctx.createRadialGradient(nx,ny,0,nx,ny,n.size*4);
-      gw.addColorStop(0,`rgba(${R},${G},${B},0.7)`);gw.addColorStop(1,`rgba(${R},${G},${B},0)`);
-      ctx.beginPath();ctx.arc(nx,ny,n.size*4,0,Math.PI*2);ctx.fillStyle=gw;ctx.fill();
-      ctx.beginPath();ctx.arc(nx,ny,n.size,0,Math.PI*2);ctx.fillStyle=cfg.primary;ctx.fill();
-    });
-  }
-
-  // emit rings
-  orbRings=orbRings.filter(r=>r.opacity>.01);
-  orbRings.forEach(r=>{
-    r.r+=r.speed*cfg.speed; r.opacity-=.007;
-    ctx.beginPath();ctx.arc(cx,cy,r.r,0,Math.PI*2);
-    ctx.strokeStyle=`rgba(${R},${G},${B},${r.opacity.toFixed(2)})`;ctx.lineWidth=1.5;ctx.stroke();
-  });
-  const ch={idle:0,listening:.025,thinking:.015,speaking:.04};
-  if(Math.random()<ch[orbState])emitRing();
-
-  // ── Galaxia 3D ──
-  const FOV = 480;
-  // Dynamické rotácie na všetkých 3 osiach
-  const rotZ = orbTime * cfg.speed * 0.004;              // rýchly spin (Z)
-  const rotY = orbTime * cfg.speed * 0.0013;             // pomalá Y rotácia
-  const rotX = 0.32 + Math.sin(orbTime * 0.065) * 0.28; // oscilujúci X náklon
-  const cZ = Math.cos(rotZ), sZ = Math.sin(rotZ);
-  const cX = Math.cos(rotX), sX = Math.sin(rotX);
-  const cY = Math.cos(rotY), sY = Math.sin(rotY);
-  // Zoom — prispôsob galaxiu veľkosti canvasu
-  const gScale = Math.min(W, H) / 480;
-
-  // Okolitá hmlovitá záplava
-  for (let i = 5; i >= 1; i--) {
-    const ng = ctx.createRadialGradient(cx, cy, 0, cx, cy, 48*i*gScale);
-    ng.addColorStop(0,   `rgba(${R},${G},${B},${(0.07/i).toFixed(3)})`);
-    ng.addColorStop(0.6, `rgba(${R},${G},${B},${(0.02/i).toFixed(3)})`);
-    ng.addColorStop(1,   `rgba(${R},${G},${B},0)`);
-    ctx.beginPath(); ctx.arc(cx, cy, 48*i*gScale, 0, Math.PI*2);
-    ctx.fillStyle = ng; ctx.fill();
-  }
-
-  // 3D guľa — Trubis
-  const sR = 42 * gScale;
-  const lx = cx - sR*0.45, ly = cy - sR*0.5;
-  const sphereG = ctx.createRadialGradient(lx, ly, 0, cx, cy, sR);
-  sphereG.addColorStop(0,    `rgba(${Math.min(255,R+90)},${Math.min(255,G+90)},${Math.min(255,B+90)},0.4)`);
-  sphereG.addColorStop(0.35, `rgba(${R},${G},${B},0.22)`);
-  sphereG.addColorStop(0.75, `rgba(${R},${G},${B},0.07)`);
-  sphereG.addColorStop(1,    `rgba(0,0,0,0.14)`);
-  ctx.beginPath(); ctx.arc(cx,cy,sR,0,Math.PI*2); ctx.fillStyle=sphereG; ctx.fill();
-  const rimG = ctx.createRadialGradient(cx, cy, sR*0.6, cx, cy, sR);
-  rimG.addColorStop(0, `rgba(${R},${G},${B},0)`);
-  rimG.addColorStop(1, `rgba(${R},${G},${B},0.22)`);
-  ctx.beginPath(); ctx.arc(cx,cy,sR,0,Math.PI*2); ctx.fillStyle=rimG; ctx.fill();
-
-  // Hviezdy — plná 3D rotácia (Z→X→Y) + perspektíva + zoom
-  galaxyStars.forEach(s => {
-    // 1. Rotácia Z (spin)
-    const x1 =  s.x*cZ - s.y*sZ;
-    const y1 =  s.x*sZ + s.y*cZ;
-    // 2. Rotácia X (tilt hore/dole)
-    const y2 =  y1*cX - s.z*sX;
-    const z2 =  y1*sX + s.z*cX;
-    // 3. Rotácia Y (tilt do strán)
-    const x3 =  x1*cY + z2*sY;
-    const y3 =  y2;
-    const z3 = -x1*sY + z2*cY;
-    // 4. Perspektíva + zoom
-    const pScale = FOV / Math.max(FOV + z3, 1);
-    const sx = cx + x3 * pScale * gScale;
-    const sy = cy + y3 * pScale * gScale;
-    const depthA  = Math.max(0.3, Math.min(1.25, pScale));
-    const twinkle = 0.65 + Math.sin(orbTime * s.ts + s.tp) * 0.35;
-    const alpha   = Math.min(1, s.opacity * twinkle * depthA);
-    const sz      = Math.max(0.3, s.size * pScale * gScale);
-    let cr = R, cg = G, cb = B;
-    if      (s.cv > 0.92) { cr=255; cg=255; cb=255; }
-    else if (s.cv > 0.78) { cr=Math.min(255,R+55); cg=Math.min(255,G+70); cb=Math.min(255,B+55); }
-    else if (s.cv > 0.65) { cr=Math.min(255,Math.round(R*0.5+20)); cg=Math.min(255,Math.round(G*0.6+160)); cb=255; }
-    if (sz > 1.1) {
-      const sg = ctx.createRadialGradient(sx,sy,0,sx,sy,sz*3.5);
-      sg.addColorStop(0,`rgba(${cr},${cg},${cb},${(alpha*0.5).toFixed(2)})`);
-      sg.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
-      ctx.beginPath(); ctx.arc(sx,sy,sz*3.5,0,Math.PI*2); ctx.fillStyle=sg; ctx.fill();
-    }
-    ctx.beginPath(); ctx.arc(sx,sy,sz,0,Math.PI*2);
-    ctx.fillStyle=`rgba(${cr},${cg},${cb},${alpha.toFixed(2)})`; ctx.fill();
-  });
+function emitRing() {
+  if (!neuralGroup || !window.THREE) return;
+  const col  = ORB_CFG[orbState].color;
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.38, 18, 18),
+    new THREE.MeshBasicMaterial({
+      color: col, transparent: true, opacity: 0.55,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    })
+  );
+  neuralGroup.add(mesh);
+  pulseRings.push({ mesh, t: 0 });
 }
 
 // ─── Waveform ─────────────────────────────────────────────────────────────────
@@ -1134,6 +1315,9 @@ async function loadChatList() {
   }
 
   tree.innerHTML = html || '<div style="padding:10px 12px;font-size:.72rem;color:var(--muted)">Žiadne relácie</div>';
+
+  // Obnov 3D sieť
+  buildNetwork(chats, cats, map);
 
   // Udalosti
   tree.querySelectorAll(".cat-header").forEach(h => {

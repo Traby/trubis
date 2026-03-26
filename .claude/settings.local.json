@@ -4,7 +4,13 @@
       "WebFetch(domain:localhost)",
       "Bash(curl -s http://localhost:11434/api/tags)",
       "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(m[''''name'''']\\) for m in data.get\\(''''models'''',[]\\)]\")",
-      "Bash(ollama list:*)"
+      "Bash(ollama list:*)",
+      "Bash(cmd.exe /c \"where node\")",
+      "Read(//c/Users/Truby/AppData/Local/**)",
+      "Read(//c/Users/Truby/AppData/Roaming/fnm//**)",
+      "Read(//c/Users/Truby/AppData/Local/Microsoft/WinGet/Packages/**)",
+      "Bash(curl -L \"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js\" -o \"D:/Repos/Trubis/app/src/three.min.js\")",
+      "Bash(curl -s http://localhost:4000/three.min.js)"
     ]
   }
 }
