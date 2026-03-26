@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trubis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0e0e28;
+      --surface: #141438;
+      --panel:   #1a1a45;
+      --border:  rgba(124,106,247,0.22);
+      --text:    #d0d0f0;
+      --muted:   #5a5a8a;
+      --accent:  #7c6af7;
+      --cyan:    #00d4ff;
+      --green:   #00ff88;
+      --amber:   #ffaa00;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', monospace;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px);
+      pointer-events: none; z-index: 9999;
+    }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+    /* ══ TOPBAR ══════════════════════════════════════════════════════════════ */
+    #topbar {
+      height: 52px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      position: relative;
+      z-index: 500;
+    }
+
+    #topbar-logo {
+      display: flex; align-items: center; gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .hdr-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: dotpulse 2.2s ease-in-out infinite;
+    }
+    @keyframes dotpulse {
+      0%,100% { opacity:1; box-shadow:0 0 8px var(--accent); }
+      50%      { opacity:.3; box-shadow:0 0 2px var(--accent); }
+    }
+
+    #topbar-logo h1 {
+      font-family: 'Orbitron', monospace;
+      font-size: 1rem; font-weight: 900;
+      letter-spacing: .18em;
+      color: var(--accent);
+      text-shadow: 0 0 16px rgba(124,106,247,.65);
+      white-space: nowrap;
+    }
+
+    #topbar-sep { width: 1px; height: 28px; background: var(--border); flex-shrink: 0; }
+
+    #model-select {
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 3px;
+      padding: 4px 8px; font-size: 0.74rem;
+      font-family: 'Courier New', monospace;
+    }
+
+    #voice-wrapper { position: relative; }
+    #voice-select {
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 3px;
+      padding: 4px 8px; font-size: 0.74rem; width: 460px;
+      font-family: 'Courier New', monospace;
+    }
+    #voice-dropdown {
+      display: none; position: absolute; top: calc(100% + 6px); left: 0;
+      width: 460px; max-height: 220px; overflow-y: auto;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 5px;
+      z-index: 600;
+      box-shadow: 0 8px 32px rgba(0,0,0,.7), 0 0 20px rgba(124,106,247,.08);
+    }
+    #voice-dropdown.open { display: block; }
+    .voice-option {
+      padding: 7px 14px; font-size: 0.76rem; color: var(--muted);
+      cursor: pointer; border-left: 2px solid transparent;
+      font-family: 'Courier New', monospace;
+    }
+    .voice-option:hover, .voice-option.selected {
+      background: rgba(124,106,247,.1); color: var(--text); border-left-color: var(--accent);
+    }
+
+    #stop-tts-btn { border-color: rgba(255,60,60,.4) !important; color: rgba(255,110,110,.85) !important; }
+    #stop-tts-btn:hover { border-color: #ff3c3c !important; color: #ff6060 !important; background: rgba(255,60,60,.1) !important; }
+
+    #topbar-rate { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--muted); }
+    #rate-slider { width: 90px; accent-color: var(--accent); cursor: pointer; }
+    #rate-value  { min-width: 26px; color: var(--text); }
+
+    #chat-title {
+      flex: 1; text-align: right;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.6rem; letter-spacing: .12em;
+      color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* panel toggles */
+    #menu-toggle, #chat-toggle, #chat-vis-btn {
+      width: 34px; height: 34px; border-radius: 3px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--muted); cursor: pointer; font-size: 1.1rem;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: all .2s;
+    }
+    #menu-toggle:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ══ CONTENT ════════════════════════════════════════════════════════════ */
+    #content { flex: 1; display: flex; overflow: hidden; }
+
+    #main-area {
+      flex: 1; display: flex; flex-direction: row;
+      overflow: hidden; min-width: 0;
+    }
+
+    /* vertikálny resizer (normálny režim) */
+    #resizer {
+      width: 5px; flex-shrink: 0;
+      background: var(--border);
+      cursor: col-resize;
+      transition: background .15s;
+    }
+    #resizer:hover, #resizer.active { background: var(--accent); box-shadow: 0 0 6px rgba(124,106,247,.4); }
+
+    /* horizontálny resizer (maximalizovaný režim) */
+    #h-resizer {
+      height: 5px; width: 100%; flex-shrink: 0;
+      background: var(--border);
+      cursor: row-resize;
+      display: none;
+      transition: background .15s;
+    }
+    #h-resizer:hover, #h-resizer.active { background: var(--accent); box-shadow: 0 0 6px rgba(124,106,247,.4); }
+
+    /* maximalizovaný režim — Trubis hore, chat dole */
+    #main-area.maximized { flex-direction: column; }
+    #main-area.maximized #center-col {
+      width: 100% !important; flex-shrink: 1;
+      border-right: none; border-bottom: 1px solid var(--border);
+    }
+    #main-area.maximized #resizer   { display: none; }
+    #main-area.maximized #h-resizer { display: block; }
+    #main-area.maximized #chat-col  { flex: 0 0 220px; min-height: 80px; }
+    #main-area.maximized #subtitle-wrap { display: block; }
+
+    #chat-col {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden;
+      min-width: 0; min-height: 0;
+      transition: flex .25s ease;
+    }
+    #chat-col.hidden { flex: 0 0 0px !important; overflow: hidden; min-height: 0 !important; }
+
+    /* ── Left: history ── */
+    #sidebar {
+      width: 250px; flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      transition: width .25s ease, opacity .25s ease;
+    }
+    #sidebar.hidden { width: 0; opacity: 0; pointer-events: none; }
+
+    /* sidebar top buttons */
+    #sidebar-top {
+      display: flex; gap: 6px; padding: 10px 10px 6px;
+      flex-shrink: 0;
+    }
+    #new-chat-btn {
+      flex: 1; padding: 7px 8px;
+      background: transparent; color: var(--accent);
+      border: 1px solid var(--accent); border-radius: 3px;
+      cursor: pointer;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.62rem; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; transition: all .2s; white-space: nowrap;
+    }
+    #new-chat-btn:hover { background: var(--accent); color: #fff; box-shadow: 0 0 10px rgba(124,106,247,.4); }
+
+
+    /* category bar */
+    #cat-bar {
+      display: flex; align-items: center; gap: 5px;
+      padding: 4px 10px 6px; flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    #new-cat-input {
+      flex: 1; background: transparent; color: var(--text);
+      border: none; border-bottom: 1px solid var(--muted);
+      padding: 3px 4px; font-size: 0.72rem;
+      font-family: 'Courier New', monospace; outline: none;
+      transition: border-color .2s;
+    }
+    #new-cat-input:focus { border-bottom-color: var(--accent); }
+    #new-cat-input::placeholder { color: var(--muted); }
+    #new-cat-btn {
+      width: 22px; height: 22px; border-radius: 2px; flex-shrink: 0;
+      border: 1px solid var(--accent); background: transparent;
+      color: var(--accent); cursor: pointer; font-size: 1rem; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .2s;
+    }
+    #new-cat-btn:hover { background: var(--accent); color: #fff; }
+
+    /* tree */
+    #cat-tree { flex: 1; overflow-y: auto; padding: 4px 0 8px; }
+
+    .cat-group { margin-bottom: 2px; }
+    .cat-header {
+      display: flex; align-items: center; gap: 4px;
+      padding: 5px 8px; cursor: pointer;
+      font-size: 0.72rem; color: var(--text);
+      user-select: none;
+    }
+    .cat-header:hover { background: rgba(124,106,247,.05); }
+    .cat-toggle { font-size: 0.6rem; color: var(--muted); width: 10px; flex-shrink: 0; transition: transform .15s; }
+    .cat-toggle.closed { transform: rotate(-90deg); }
+    .cat-icon { font-size: 0.8rem; flex-shrink: 0; }
+    .cat-name { flex: 1; font-family: 'Orbitron', monospace; font-size: 0.62rem; letter-spacing: .06em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cat-del {
+      width: 18px; height: 18px; border-radius: 2px; flex-shrink: 0;
+      border: none; background: transparent; color: var(--muted);
+      cursor: pointer; font-size: 0.7rem; opacity: 0;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .15s;
+    }
+    .cat-header:hover .cat-del { opacity: 1; }
+    .cat-del:hover { color: #ff6060; }
+
+    .cat-body { padding-left: 14px; }
+    .cat-body.collapsed { display: none; }
+
+    .chat-item {
+      display: flex; align-items: center; gap: 3px;
+      padding: 5px 8px 5px 10px; border-radius: 3px; cursor: pointer;
+      font-size: 0.74rem; color: var(--muted);
+      border: 1px solid transparent; transition: all .15s;
+    }
+    .chat-item:hover  { border-color: var(--border); color: var(--text); background: rgba(124,106,247,.05); }
+    .chat-item.active { border-color: var(--accent); color: var(--text); background: rgba(124,106,247,.1); }
+    .chat-item-title  { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chat-move-btn {
+      width: 16px; height: 16px; border-radius: 2px; flex-shrink: 0;
+      border: none; background: transparent; color: var(--muted);
+      cursor: pointer; font-size: 0.65rem; opacity: 0;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .15s;
+    }
+    .chat-item:hover .chat-move-btn { opacity: 1; }
+    .chat-move-btn:hover { color: var(--accent); }
+
+    .chat-del-btn {
+      width: 16px; height: 16px; border-radius: 2px; flex-shrink: 0;
+      border: none; background: transparent; color: var(--muted);
+      cursor: pointer; font-size: 0.65rem; opacity: 0;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .15s;
+    }
+    .chat-item:hover .chat-del-btn { opacity: 1; }
+    .chat-del-btn:hover { color: #ff6060; }
+
+    /* move menu */
+    .move-menu {
+      position: fixed; z-index: 800;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 4px; padding: 4px 0; min-width: 160px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.6);
+    }
+    .move-opt {
+      padding: 6px 12px; font-size: 0.73rem; color: var(--muted);
+      cursor: pointer; font-family: 'Courier New', monospace;
+      transition: all .1s; display: flex; align-items: center; gap: 6px;
+    }
+    .move-opt:hover  { background: rgba(124,106,247,.1); color: var(--text); }
+    .move-opt.active { color: var(--accent); }
+    .move-opt-sep { height: 1px; background: var(--border); margin: 3px 0; }
+
+    /* ── Center: Trubis orb + waveform ── */
+    #center-col {
+      width: 340px; flex-shrink: 0;
+      background: var(--bg);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      align-items: center;
+      transition: width .25s ease, flex .25s ease;
+    }
+
+    /* subtitle (titulky) — viditeľné len keď je chat skrytý */
+    #subtitle-wrap {
+      width: 100%; padding: 0 14px 6px;
+      flex-shrink: 0; display: none;
+    }
+    /* subtitle je riadený cez #main-area.maximized #subtitle-wrap vyššie */
+    #subtitle {
+      font-size: 0.82rem; line-height: 1.6;
+      color: var(--cyan); text-align: center;
+      white-space: pre-wrap; word-break: break-word;
+      padding: 8px 10px;
+      border-top: 1px solid rgba(0,212,255,0.18);
+      max-height: 5em; overflow: hidden;
+      opacity: 0; transition: opacity .4s;
+    }
+    #subtitle.active { opacity: 1; }
+    #subtitle.user-speech { color: var(--green); border-top-color: rgba(0,255,136,0.18); }
+
+    #stage {
+      position: relative;
+      width: 100%; flex: 1; min-height: 0;
+      overflow: hidden;
+    }
+    #orb-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    #state-label {
+      position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+      font-family: 'Orbitron', monospace;
+      font-size: 0.65rem; font-weight: 700; letter-spacing: .28em;
+      color: var(--accent);
+      text-shadow: 0 0 12px rgba(124,106,247,.6);
+      pointer-events: none;
+    }
+
+    /* corner brackets — všetky 4 rohy */
+    #stage::before, #stage::after {
+      content: ''; position: absolute; width: 14px; height: 14px;
+      border-color: var(--accent); border-style: solid; opacity: .35;
+      z-index: 2;
+    }
+    #stage::before { top:8px;    left:8px;   border-width:2px 0 0 2px; }
+    #stage::after  { top:8px;    right:8px;  border-width:2px 2px 0 0; }
+    .stage-corner  {
+      content: ''; position: absolute; width: 14px; height: 14px;
+      border-color: var(--accent); border-style: solid; opacity: .35;
+      pointer-events: none; z-index: 2;
+    }
+    .stage-bl { bottom:8px; left:8px;  border-width:0 0 2px 2px; }
+    .stage-br { bottom:8px; right:8px; border-width:0 2px 2px 0; }
+
+    /* waveform */
+    #wave-wrap {
+      width: 300px;
+      margin: 10px 0 0;
+      flex-shrink: 0;
+    }
+    #wave-canvas {
+      width: 300px; height: 80px;
+      display: block;
+      background: transparent;
+    }
+
+    /* mic / convo tlačidlá v topbare */
+    #topbar .icon-btn { width: 34px; height: 34px; font-size: 0.9rem; }
+
+    /* schovaj input bar v convo režime */
+    body.convo-mode #input-bar { display: none; }
+
+    .icon-btn {
+      width: 40px; height: 40px; border-radius: 3px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--muted); cursor: pointer; font-size: 1rem;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: all .2s;
+    }
+    .icon-btn:hover { border-color: var(--accent); color: var(--text); box-shadow: 0 0 8px rgba(124,106,247,.3); }
+    .icon-btn.active       { background: rgba(255,60,60,.1); border-color: #ff3c3c; color: #ff6060; box-shadow: 0 0 8px rgba(255,60,60,.3); }
+    #convo-btn.active      { background: rgba(0,255,136,.07); border-color: var(--green); color: var(--green); box-shadow: 0 0 8px rgba(0,255,136,.3); }
+
+    /* ── Right: chat ── */
+
+    #messages {
+      flex: 1; overflow-y: auto;
+      padding: 16px; display: flex; flex-direction: column; gap: 12px;
+    }
+
+    .msg { display: flex; gap: 9px; max-width: 100%; width: 100%; }
+    .msg.user      { align-self: flex-end;  flex-direction: row-reverse; }
+    .msg.assistant { align-self: flex-start; }
+
+    .msg-avatar {
+      width: 30px; height: 30px; border-radius: 3px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.68rem; font-weight: 700; flex-shrink: 0;
+      font-family: 'Orbitron', monospace;
+    }
+    .msg.user .msg-avatar      { border: 1px solid var(--accent); color: var(--accent); }
+    .msg.assistant .msg-avatar { border: 1px solid var(--cyan);   color: var(--cyan); font-size: .95rem; }
+
+    .msg-bubble {
+      padding: 9px 13px; border-radius: 3px;
+      font-size: 0.86rem; line-height: 1.65;
+      max-width: calc(100% - 42px);
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .msg.user .msg-bubble {
+      background: rgba(124,106,247,.08);
+      border: 1px solid rgba(124,106,247,.22);
+      border-top-right-radius: 0;
+    }
+    .msg.assistant .msg-bubble {
+      background: rgba(0,212,255,.04);
+      border: 1px solid rgba(0,212,255,.14);
+      border-top-left-radius: 0;
+    }
+
+    .typing-dot {
+      display: inline-block; width: 5px; height: 5px;
+      border-radius: 50%; background: var(--cyan);
+      animation: blink 1.2s infinite;
+    }
+    .typing-dot:nth-child(2) { animation-delay: .2s; }
+    .typing-dot:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+
+    #empty-state {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 8px;
+      color: var(--muted); font-family: 'Orbitron', monospace;
+      font-size: 0.72rem; letter-spacing: .1em;
+    }
+
+    #input-bar {
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      display: flex; gap: 8px; align-items: flex-end;
+    }
+    #user-input {
+      flex: 1;
+      background: rgba(0,0,0,.35); color: var(--text);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 10px 13px; font-size: 0.86rem;
+      resize: none;
+      min-height: 100px; max-height: 300px; overflow-y: auto;
+      outline: none;
+      font-family: 'Courier New', monospace; line-height: 1.55;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    #user-input:focus { border-color: var(--accent); box-shadow: 0 0 10px rgba(124,106,247,.18); }
+    #user-input::placeholder { color: var(--muted); }
+    #send-btn { border-color: var(--accent); color: var(--accent); }
+    #send-btn:hover { background: var(--accent); color: #fff; box-shadow: 0 0 12px rgba(124,106,247,.45); }
+  </style>
+</head>
+<body>
+
+<!-- ══ TOPBAR ══ -->
+<div id="topbar">
+  <button id="menu-toggle" title="Menu">☰</button>
+  <div id="topbar-logo">
+    <div class="hdr-dot"></div>
+    <h1>TRUBIS</h1>
+  </div>
+  <div id="topbar-sep"></div>
+  <select id="model-select"><option value="">Načítavam…</option></select>
+  <div id="voice-wrapper">
+    <input id="voice-select" placeholder="🔊 Hlas…" autocomplete="off" readonly>
+    <div id="voice-dropdown"></div>
+  </div>
+  <div id="topbar-sep"></div>
+  <div id="topbar-rate">
+    <span>TEMPO:</span>
+    <input id="rate-slider" type="range" min="0.5" max="2" step="0.1" value="1.0">
+    <span id="rate-value">1.0×</span>
+  </div>
+  <div id="topbar-sep"></div>
+  <button class="icon-btn" id="tts-toggle"  title="Čítanie zapnuté">🔊</button>
+  <button class="icon-btn" id="stop-tts-btn" title="Zastaviť Trubisa">⏹</button>
+  <button class="icon-btn" id="convo-btn"   title="Režim rozhovoru">💬</button>
+  <button class="icon-btn" id="mic-btn"     title="Hlasový vstup">🎤</button>
+  <div id="chat-title"></div>
+  <button id="chat-vis-btn" title="Skryť chat">💬</button>
+  <button id="chat-toggle"  title="Maximalizovať Trubisa">▐</button>
+</div>
+
+<!-- ══ CONTENT ══ -->
+<div id="content">
+
+  <!-- Left: history -->
+  <aside id="sidebar">
+    <div id="sidebar-top">
+      <button id="new-chat-btn">+ Nová relácia</button>
+    </div>
+    <div id="cat-bar">
+      <input id="new-cat-input" placeholder="Nová kategória…" maxlength="30">
+      <button id="new-cat-btn" title="Vytvoriť kategóriu">+</button>
+    </div>
+    <div id="cat-tree"></div>
+  </aside>
+
+  <!-- Main area (center + chat) -->
+  <div id="main-area">
+
+    <!-- Center: Trubis -->
+    <div id="center-col">
+      <div id="stage">
+        <canvas id="orb-canvas"></canvas>
+        <div id="state-label">STANDBY</div>
+        <div class="stage-corner stage-bl"></div>
+        <div class="stage-corner stage-br"></div>
+      </div>
+      <div id="wave-wrap">
+        <canvas id="wave-canvas" width="300" height="80"></canvas>
+      </div>
+      <div id="subtitle-wrap">
+        <div id="subtitle"></div>
+      </div>
+    </div>
+
+    <!-- Horizontálny resizer (maximalizovaný režim) -->
+    <div id="h-resizer"></div>
+
+    <!-- Vertikálny resizer (normálny režim) -->
+    <div id="resizer"></div>
+
+    <!-- Chat -->
+    <div id="chat-col">
+      <div id="messages">
+        <div id="empty-state">
+          <div>[ TRUBIS ONLINE ]</div>
+          <div style="font-size:.6rem;opacity:.4;margin-top:4px">Začni novú reláciu alebo pokračuj v existujúcej</div>
+        </div>
+      </div>
+      <div id="input-bar">
+        <textarea id="user-input" placeholder="> zadaj príkaz… (Enter = odošli, Shift+Enter = nový riadok)"></textarea>
+        <button class="icon-btn" id="send-btn" title="Odoslať">➤</button>
+      </div>
+    </div>
+
+  </div><!-- /main-area -->
+
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let activeChatId  = null;
+let isStreaming    = false;
+let recognition    = null;
+let isConvoMode    = false;
+let ttsEnabled     = true;
+let silenceTimer   = null;
+let subtitleTimer  = null;
+const SILENCE_DELAY = 2500;
+
+// ─── Orb ─────────────────────────────────────────────────────────────────────
+const ORB_CFG = {
+  idle:      { primary:'#7c6af7', secondary:'#2a1580', rgb:[124,106,247], speed:1.0,  label:'STANDBY'   },
+  listening: { primary:'#00ff88', secondary:'#005c35', rgb:[0,255,136],   speed:2.4,  label:'POČÚVAM'   },
+  thinking:  { primary:'#ffaa00', secondary:'#7a4800', rgb:[255,170,0],   speed:3.0,  label:'SPRACÚVAM' },
+  speaking:  { primary:'#00d4ff', secondary:'#003d55', rgb:[0,212,255],   speed:2.0,  label:'HOVORÍM'   },
+};
+let orbState = 'idle', orbTime = 0;
+let orbCanvas, orbCtx, orbRings = [], orbNodes = [];
+let galaxyStars = [];
+
+function initOrb() {
+  orbCanvas = document.getElementById('orb-canvas');
+  orbCtx    = orbCanvas.getContext('2d');
+  resizeOrb();
+  window.addEventListener('resize', resizeOrb);
+  initGalaxy();
+  for (let i = 0; i < 10; i++) orbNodes.push({
+    angle:  (i/10)*Math.PI*2,
+    radius: 120 + Math.random()*50,
+    size:   2.5 + Math.random()*2,
+    phase:  Math.random()*Math.PI*2,
+    speed:  0.003 + Math.random()*0.003,
+  });
+  requestAnimationFrame(orbTick);
+}
+function resizeOrb() {
+  const s = document.getElementById('stage');
+  orbCanvas.width = s.offsetWidth; orbCanvas.height = s.offsetHeight;
+}
+function initGalaxy() {
+  galaxyStars = [];
+  const ARMS = 3;
+
+  // Husté jadro
+  for (let i = 0; i < 90; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.pow(Math.random(), 1.8) * 55;
+    galaxyStars.push({ x: Math.cos(a)*r, y: Math.sin(a)*r,
+      z: (Math.random()-0.5) * r * 0.65,
+      size: 0.3 + Math.random()*1.8, opacity: 0.3 + Math.random()*0.6,
+      tp: Math.random()*Math.PI*2, ts: 1+Math.random()*2.5, kind:'core',
+      cv: Math.random() });
+  }
+
+  // Špirálovité ramená
+  for (let i = 0; i < 350; i++) {
+    const arm   = i % ARMS;
+    const base  = (arm / ARMS) * Math.PI * 2;
+    const t     = Math.random();
+    const r     = 25 + t * 175;
+    const angle = base + t * Math.PI * 2.8 + (Math.random()-.5) * 0.55;
+    galaxyStars.push({ x: Math.cos(angle)*r, y: Math.sin(angle)*r,
+      z: (Math.random()-0.5) * 20,
+      size: 0.3 + (1-t) * Math.random() * 2.2,
+      opacity: 0.1 + (1 - t*0.65) * Math.random() * 0.75,
+      tp: Math.random()*Math.PI*2, ts: 0.4+Math.random()*1.8, kind:'arm',
+      cv: Math.random() });
+  }
+
+  // Halo
+  for (let i = 0; i < 70; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 165 + Math.random() * 65;
+    galaxyStars.push({ x: Math.cos(a)*r, y: Math.sin(a)*r,
+      z: (Math.random()-0.5) * 95,
+      size: 0.3 + Math.random()*0.7, opacity: 0.05 + Math.random()*0.2,
+      tp: Math.random()*Math.PI*2, ts: 0.2+Math.random()*0.8, kind:'halo',
+      cv: Math.random() });
+  }
+}
+function setOrbState(state) {
+  if (orbState === state) return;
+  orbState = state;
+  const c = ORB_CFG[state];
+  const lbl = document.getElementById('state-label');
+  lbl.textContent = c.label;
+  lbl.style.color = c.primary;
+  lbl.style.textShadow = `0 0 14px ${c.primary}90`;
+  if (state !== 'idle') emitRing();
+}
+function emitRing() { orbRings.push({ r:55, opacity:.75, speed:2 }); }
+
+function orbTick() {
+  requestAnimationFrame(orbTick);
+  orbTime += 0.016;
+  // Auto-resize ak sa zmenil stage
+  const _s = document.getElementById('stage');
+  if (orbCanvas.width !== _s.offsetWidth || orbCanvas.height !== _s.offsetHeight) resizeOrb();
+  const cfg = ORB_CFG[orbState];
+  const ctx = orbCtx;
+  const W = orbCanvas.width, H = orbCanvas.height, cx = W/2, cy = H/2;
+  const [R,G,B] = cfg.rgb;
+  ctx.clearRect(0,0,W,H);
+
+  // grid
+  ctx.strokeStyle=`rgba(${R},${G},${B},0.04)`; ctx.lineWidth=.5;
+  for(let x=0;x<W;x+=36){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=36){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+  // radar rings
+  [75,140,205].forEach(r=>{ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.strokeStyle=`rgba(${R},${G},${B},0.06)`;ctx.lineWidth=1;ctx.stroke();});
+
+  // sweep
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(orbTime*.55);
+  const sw=ctx.createLinearGradient(0,0,210,0);
+  sw.addColorStop(0,`rgba(${R},${G},${B},0.2)`); sw.addColorStop(.6,`rgba(${R},${G},${B},0.04)`); sw.addColorStop(1,`rgba(${R},${G},${B},0)`);
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,210,-0.2,0.2); ctx.closePath(); ctx.fillStyle=sw; ctx.fill();
+  ctx.restore();
+
+  // neural net
+  if(orbState==='thinking'||orbState==='speaking'){
+    orbNodes.forEach((n,i)=>{
+      n.angle+=n.speed*cfg.speed;
+      const nx=cx+Math.cos(n.angle)*n.radius, ny=cy+Math.sin(n.angle)*n.radius;
+      const pulse=0.25+Math.sin(orbTime*4+n.phase)*.18;
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(nx,ny);
+      ctx.strokeStyle=`rgba(${R},${G},${B},${(pulse*.6).toFixed(2)})`;ctx.lineWidth=.8;ctx.stroke();
+      const nb=orbNodes[(i+1)%orbNodes.length];
+      ctx.beginPath();ctx.moveTo(nx,ny);ctx.lineTo(cx+Math.cos(nb.angle)*nb.radius,cy+Math.sin(nb.angle)*nb.radius);
+      ctx.strokeStyle=`rgba(${R},${G},${B},0.1)`;ctx.lineWidth=.5;ctx.stroke();
+      const gw=ctx.createRadialGradient(nx,ny,0,nx,ny,n.size*4);
+      gw.addColorStop(0,`rgba(${R},${G},${B},0.7)`);gw.addColorStop(1,`rgba(${R},${G},${B},0)`);
+      ctx.beginPath();ctx.arc(nx,ny,n.size*4,0,Math.PI*2);ctx.fillStyle=gw;ctx.fill();
+      ctx.beginPath();ctx.arc(nx,ny,n.size,0,Math.PI*2);ctx.fillStyle=cfg.primary;ctx.fill();
+    });
+  }
+
+  // emit rings
+  orbRings=orbRings.filter(r=>r.opacity>.01);
+  orbRings.forEach(r=>{
+    r.r+=r.speed*cfg.speed; r.opacity-=.007;
+    ctx.beginPath();ctx.arc(cx,cy,r.r,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(${R},${G},${B},${r.opacity.toFixed(2)})`;ctx.lineWidth=1.5;ctx.stroke();
+  });
+  const ch={idle:0,listening:.025,thinking:.015,speaking:.04};
+  if(Math.random()<ch[orbState])emitRing();
+
+  // ── Galaxia 3D ──
+  const FOV = 480;
+  // Dynamické rotácie na všetkých 3 osiach
+  const rotZ = orbTime * cfg.speed * 0.004;              // rýchly spin (Z)
+  const rotY = orbTime * cfg.speed * 0.0013;             // pomalá Y rotácia
+  const rotX = 0.32 + Math.sin(orbTime * 0.065) * 0.28; // oscilujúci X náklon
+  const cZ = Math.cos(rotZ), sZ = Math.sin(rotZ);
+  const cX = Math.cos(rotX), sX = Math.sin(rotX);
+  const cY = Math.cos(rotY), sY = Math.sin(rotY);
+  // Zoom — prispôsob galaxiu veľkosti canvasu
+  const gScale = Math.min(W, H) / 480;
+
+  // Okolitá hmlovitá záplava
+  for (let i = 5; i >= 1; i--) {
+    const ng = ctx.createRadialGradient(cx, cy, 0, cx, cy, 48*i*gScale);
+    ng.addColorStop(0,   `rgba(${R},${G},${B},${(0.07/i).toFixed(3)})`);
+    ng.addColorStop(0.6, `rgba(${R},${G},${B},${(0.02/i).toFixed(3)})`);
+    ng.addColorStop(1,   `rgba(${R},${G},${B},0)`);
+    ctx.beginPath(); ctx.arc(cx, cy, 48*i*gScale, 0, Math.PI*2);
+    ctx.fillStyle = ng; ctx.fill();
+  }
+
+  // 3D guľa — Trubis
+  const sR = 42 * gScale;
+  const lx = cx - sR*0.45, ly = cy - sR*0.5;
+  const sphereG = ctx.createRadialGradient(lx, ly, 0, cx, cy, sR);
+  sphereG.addColorStop(0,    `rgba(${Math.min(255,R+90)},${Math.min(255,G+90)},${Math.min(255,B+90)},0.4)`);
+  sphereG.addColorStop(0.35, `rgba(${R},${G},${B},0.22)`);
+  sphereG.addColorStop(0.75, `rgba(${R},${G},${B},0.07)`);
+  sphereG.addColorStop(1,    `rgba(0,0,0,0.14)`);
+  ctx.beginPath(); ctx.arc(cx,cy,sR,0,Math.PI*2); ctx.fillStyle=sphereG; ctx.fill();
+  const rimG = ctx.createRadialGradient(cx, cy, sR*0.6, cx, cy, sR);
+  rimG.addColorStop(0, `rgba(${R},${G},${B},0)`);
+  rimG.addColorStop(1, `rgba(${R},${G},${B},0.22)`);
+  ctx.beginPath(); ctx.arc(cx,cy,sR,0,Math.PI*2); ctx.fillStyle=rimG; ctx.fill();
+
+  // Hviezdy — plná 3D rotácia (Z→X→Y) + perspektíva + zoom
+  galaxyStars.forEach(s => {
+    // 1. Rotácia Z (spin)
+    const x1 =  s.x*cZ - s.y*sZ;
+    const y1 =  s.x*sZ + s.y*cZ;
+    // 2. Rotácia X (tilt hore/dole)
+    const y2 =  y1*cX - s.z*sX;
+    const z2 =  y1*sX + s.z*cX;
+    // 3. Rotácia Y (tilt do strán)
+    const x3 =  x1*cY + z2*sY;
+    const y3 =  y2;
+    const z3 = -x1*sY + z2*cY;
+    // 4. Perspektíva + zoom
+    const pScale = FOV / Math.max(FOV + z3, 1);
+    const sx = cx + x3 * pScale * gScale;
+    const sy = cy + y3 * pScale * gScale;
+    const depthA  = Math.max(0.3, Math.min(1.25, pScale));
+    const twinkle = 0.65 + Math.sin(orbTime * s.ts + s.tp) * 0.35;
+    const alpha   = Math.min(1, s.opacity * twinkle * depthA);
+    const sz      = Math.max(0.3, s.size * pScale * gScale);
+    let cr = R, cg = G, cb = B;
+    if      (s.cv > 0.92) { cr=255; cg=255; cb=255; }
+    else if (s.cv > 0.78) { cr=Math.min(255,R+55); cg=Math.min(255,G+70); cb=Math.min(255,B+55); }
+    else if (s.cv > 0.65) { cr=Math.min(255,Math.round(R*0.5+20)); cg=Math.min(255,Math.round(G*0.6+160)); cb=255; }
+    if (sz > 1.1) {
+      const sg = ctx.createRadialGradient(sx,sy,0,sx,sy,sz*3.5);
+      sg.addColorStop(0,`rgba(${cr},${cg},${cb},${(alpha*0.5).toFixed(2)})`);
+      sg.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+      ctx.beginPath(); ctx.arc(sx,sy,sz*3.5,0,Math.PI*2); ctx.fillStyle=sg; ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(sx,sy,sz,0,Math.PI*2);
+    ctx.fillStyle=`rgba(${cr},${cg},${cb},${alpha.toFixed(2)})`; ctx.fill();
+  });
+}
+
+// ─── Waveform ─────────────────────────────────────────────────────────────────
+let waveCtx, waveTime2 = 0, waveMode = 'idle';
+let audioCtx = null, analyser = null, waveData = null;
+let waveLastSignal = 0;
+const WAVE_FADE_AFTER = 5000; // ms ticha → začne miznúť
+const WAVE_GONE_AFTER = 6000; // ms ticha → úplne zmizne
+
+function initWave() {
+  const c = document.getElementById('wave-canvas');
+  waveCtx = c.getContext('2d');
+  requestAnimationFrame(waveTick);
+}
+
+async function initMicAudio() {
+  if (audioCtx) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser  = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.75;
+    const src = audioCtx.createMediaStreamSource(stream);
+    src.connect(analyser);
+    waveData = new Uint8Array(analyser.frequencyBinCount);
+  } catch(e) {}
+}
+
+function setWaveMode(mode) { waveMode = mode; }
+
+function waveTick() {
+  requestAnimationFrame(waveTick);
+  waveTime2 += 0.016;
+  const c = document.getElementById('wave-canvas');
+  const ctx = waveCtx;
+  const W = c.width, H = c.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // idle → nič nekresli
+  if (waveMode === 'idle') return;
+
+  if (waveMode === 'mic') {
+    const now = Date.now();
+    if (analyser) {
+      analyser.getByteTimeDomainData(waveData);
+      // detekuj skutočný signál (nie len ticho na 128)
+      let hasSignal = false;
+      for (let i = 0; i < waveData.length; i++) {
+        if (Math.abs(waveData[i] - 128) > 4) { hasSignal = true; break; }
+      }
+      if (hasSignal) waveLastSignal = now;
+
+      const silent = now - waveLastSignal;
+      if (silent >= WAVE_GONE_AFTER) return; // úplne zmizni
+
+      // fade v poslednej sekunde
+      const alpha = silent > WAVE_FADE_AFTER
+        ? 1 - (silent - WAVE_FADE_AFTER) / (WAVE_GONE_AFTER - WAVE_FADE_AFTER)
+        : 1;
+
+      ctx.globalAlpha = alpha;
+      ctx.shadowBlur = 8; ctx.shadowColor = 'rgba(0,255,136,0.5)';
+      ctx.strokeStyle = 'rgba(0,255,136,0.9)'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      const sw = W / waveData.length;
+      for (let i = 0; i < waveData.length; i++) {
+        const y = ((waveData[i] / 128) - 1) * (H/2 - 4) + H/2;
+        i === 0 ? ctx.moveTo(0, y) : ctx.lineTo(i * sw, y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    }
+    return;
+  }
+
+  if (waveMode === 'tts') {
+    ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(0,212,255,0.4)';
+    ctx.strokeStyle = 'rgba(0,212,255,0.9)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let x = 0; x < W; x++) {
+      const t  = x / W;
+      const w1 = Math.sin((t*6  + waveTime2*4.2)*Math.PI);
+      const w2 = Math.sin((t*3  + waveTime2*2.8)*Math.PI) * 0.55;
+      const w3 = Math.sin((t*10 + waveTime2*6.3)*Math.PI) * 0.28;
+      const y  = H/2 + (w1+w2+w3) * (H/2-5) * 0.45;
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke(); ctx.shadowBlur = 0;
+  }
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+async function init() {
+  initOrb();
+  initWave();
+  await loadModels();
+  await loadChatList();
+  setupSpeech();
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+async function loadModels() {
+  try {
+    const models = await api("/api/models");
+    const sel = document.getElementById("model-select");
+    sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join("");
+    const def = models.find(m => m.startsWith("gemma"))
+             || models.find(m => m.includes("aya-expanse"))
+             || models.find(m => m.includes("llama3.1:8b"))
+             || models[0];
+    if (def) sel.value = def;
+  } catch {
+    document.getElementById("model-select").innerHTML = '<option>Ollama offline</option>';
+  }
+}
+
+// ─── Panel toggles ────────────────────────────────────────────────────────────
+document.getElementById("menu-toggle").addEventListener("click", () => {
+  document.getElementById("sidebar").classList.toggle("hidden");
+});
+
+document.getElementById("chat-toggle").addEventListener("click", () => {
+  const mainArea  = document.getElementById("main-area");
+  const centerCol = document.getElementById("center-col");
+  const chatCol   = document.getElementById("chat-col");
+  const isMax     = mainArea.classList.toggle("maximized");
+  document.getElementById("chat-toggle").textContent = isMax ? "▌" : "▐";
+  if (isMax) {
+    centerCol.dataset.savedWidth = centerCol.style.width || "";
+    centerCol.style.width        = "";
+    centerCol.style.flex         = "1";
+    centerCol.style.flexShrink   = "1";
+    chatCol.style.flex           = "0 0 220px";
+  } else {
+    centerCol.style.flex        = "";
+    centerCol.style.flexShrink  = "0";
+    centerCol.style.width       = centerCol.dataset.savedWidth || "340px";
+    chatCol.style.flex          = "";
+  }
+});
+
+// ─── Chat visibility toggle ───────────────────────────────────────────────────
+document.getElementById("chat-vis-btn").addEventListener("click", () => {
+  const chatCol  = document.getElementById("chat-col");
+  const mainArea = document.getElementById("main-area");
+  const isHidden = chatCol.classList.toggle("hidden");
+  const btn = document.getElementById("chat-vis-btn");
+  btn.title = isHidden ? "Zobraziť chat" : "Skryť chat";
+  btn.classList.toggle("active", isHidden);
+  // V normálnom režime schovaj/ukáž aj vertikálny resizer
+  if (!mainArea.classList.contains("maximized")) {
+    document.getElementById("resizer").style.display = isHidden ? "none" : "";
+  } else {
+    document.getElementById("h-resizer").style.display = isHidden ? "none" : "";
+  }
+});
+
+// ─── Horizontálny resizer ─────────────────────────────────────────────────────
+(function() {
+  const hResizer = document.getElementById("h-resizer");
+  const chatCol  = document.getElementById("chat-col");
+  let dragging = false, startY = 0, startH = 0;
+
+  hResizer.addEventListener("mousedown", e => {
+    dragging = true; startY = e.clientY; startH = chatCol.offsetHeight;
+    hResizer.classList.add("active");
+    document.body.style.cursor     = "row-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", e => {
+    if (!dragging) return;
+    const delta = startY - e.clientY; // hore = väčší chat
+    const mainH = document.getElementById("main-area").offsetHeight;
+    const newH  = Math.max(80, Math.min(mainH - 180, startH + delta));
+    chatCol.style.flex = `0 0 ${newH}px`;
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    hResizer.classList.remove("active");
+    document.body.style.cursor     = "";
+    document.body.style.userSelect = "";
+  });
+})();
+
+// ─── Resizer ──────────────────────────────────────────────────────────────────
+(function() {
+  const resizer   = document.getElementById("resizer");
+  const centerCol = document.getElementById("center-col");
+  let dragging = false, startX = 0, startW = 0;
+
+  resizer.addEventListener("mousedown", e => {
+    dragging = true; startX = e.clientX; startW = centerCol.offsetWidth;
+    resizer.classList.add("active");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", e => {
+    if (!dragging) return;
+    const delta  = e.clientX - startX;
+    const sidebarW = document.getElementById('sidebar').classList.contains('hidden') ? 0 : 250;
+    const maxW   = window.innerWidth - sidebarW - 5 - 200;
+    const newW   = Math.max(220, Math.min(maxW, startW + delta));
+    centerCol.style.width = newW + "px";
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove("active");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  });
+})();
+
+// ─── Categories (localStorage) ────────────────────────────────────────────────
+function getCats()          { return JSON.parse(localStorage.getItem("tv_cats")  || "[]"); }
+function saveCats(c)        { localStorage.setItem("tv_cats",  JSON.stringify(c)); }
+function getCatMap()        { return JSON.parse(localStorage.getItem("tv_catmap") || "{}"); }
+function saveCatMap(m)      { localStorage.setItem("tv_catmap", JSON.stringify(m)); }
+
+document.getElementById("new-cat-btn").addEventListener("click", createCategory);
+document.getElementById("new-cat-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") createCategory();
+});
+
+function createCategory() {
+  const inp  = document.getElementById("new-cat-input");
+  const name = inp.value.trim();
+  if (!name) return;
+  const cats = getCats();
+  cats.push({ id: Date.now().toString(), name });
+  saveCats(cats);
+  inp.value = "";
+  loadChatList();
+}
+
+function deleteCategory(catId) {
+  const cats = getCats().filter(c => c.id !== catId);
+  saveCats(cats);
+  const map = getCatMap();
+  Object.keys(map).forEach(k => { if (map[k] === catId) delete map[k]; });
+  saveCatMap(map);
+  loadChatList();
+}
+
+async function deleteChat(id) {
+  await api(`/api/chats/${id}`, "DELETE");
+  const map = getCatMap();
+  delete map[id];
+  saveCatMap(map);
+  if (activeChatId === id) {
+    activeChatId = null;
+    document.getElementById("chat-title").textContent = "";
+    document.getElementById("messages").innerHTML = '<div id="empty-state"><div>[ TRUBIS ONLINE ]</div><div style="font-size:.6rem;opacity:.4;margin-top:4px">Začni novú reláciu alebo pokračuj v existujúcej</div></div>';
+  }
+  loadChatList();
+}
+
+function moveChatToCategory(chatId, catId) {
+  const map = getCatMap();
+  if (catId) map[chatId] = catId;
+  else delete map[chatId];
+  saveCatMap(map);
+  loadChatList();
+}
+
+function showMoveMenu(chatId, btn) {
+  document.querySelector(".move-menu")?.remove();
+  const cats = getCats();
+  const map  = getCatMap();
+  const cur  = map[chatId];
+  const menu = document.createElement("div");
+  menu.className = "move-menu";
+  menu.innerHTML =
+    `<div class="move-opt${!cur?" active":""}" data-cat="">📄 Bez kategórie</div>` +
+    (cats.length ? '<div class="move-opt-sep"></div>' : "") +
+    cats.map(c => `<div class="move-opt${cur===c.id?" active":""}" data-cat="${c.id}">📁 ${escHtml(c.name)}</div>`).join("");
+  const r = btn.getBoundingClientRect();
+  menu.style.top  = r.bottom + 4 + "px";
+  menu.style.left = r.left   + "px";
+  document.body.appendChild(menu);
+  menu.addEventListener("mousedown", e => {
+    const opt = e.target.closest(".move-opt");
+    if (!opt) return;
+    moveChatToCategory(chatId, opt.dataset.cat);
+    menu.remove();
+  });
+  setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
+}
+
+
+// ─── Chats sidebar ────────────────────────────────────────────────────────────
+const collapsedCats = new Set();
+
+async function loadChatList() {
+  const chats = await api("/api/chats");
+  const cats  = getCats();
+  const map   = getCatMap();
+  const tree  = document.getElementById("cat-tree");
+
+  function chatItemHtml(c) {
+    return `<div class="chat-item${c.id===activeChatId?" active":""}" data-id="${c.id}">
+      <span class="chat-item-title">▸ ${escHtml(c.title)}</span>
+      <button class="chat-move-btn" data-id="${c.id}" title="Presunúť">⇥</button>
+      <button class="chat-del-btn"  data-id="${c.id}" title="Zmazať">✕</button>
+    </div>`;
+  }
+
+  let html = "";
+
+  // Kategórie
+  cats.forEach(cat => {
+    const catChats   = chats.filter(c => map[c.id] === cat.id);
+    const collapsed  = collapsedCats.has(cat.id);
+    html += `<div class="cat-group">
+      <div class="cat-header" data-catid="${cat.id}">
+        <span class="cat-toggle${collapsed?" closed":""}">▾</span>
+        <span class="cat-icon">📁</span>
+        <span class="cat-name">${escHtml(cat.name)}</span>
+        <button class="cat-del" data-catid="${cat.id}" title="Zmazať kategóriu">✕</button>
+      </div>
+      <div class="cat-body${collapsed?" collapsed":""}">
+        ${catChats.length ? catChats.map(chatItemHtml).join("") : '<div style="padding:4px 10px;font-size:.68rem;color:var(--muted);opacity:.5">prázdne</div>'}
+      </div>
+    </div>`;
+  });
+
+  // Bez kategórie
+  const uncat = chats.filter(c => !map[c.id]);
+  if (uncat.length || !cats.length) {
+    const collapsed = collapsedCats.has("__uncat__");
+    html += `<div class="cat-group">
+      <div class="cat-header" data-catid="__uncat__">
+        <span class="cat-toggle${collapsed?" closed":""}">▾</span>
+        <span class="cat-icon">📄</span>
+        <span class="cat-name">Bez kategórie</span>
+      </div>
+      <div class="cat-body${collapsed?" collapsed":""}">
+        ${uncat.length ? uncat.map(chatItemHtml).join("") : '<div style="padding:4px 10px;font-size:.68rem;color:var(--muted);opacity:.5">prázdne</div>'}
+      </div>
+    </div>`;
+  }
+
+  tree.innerHTML = html || '<div style="padding:10px 12px;font-size:.72rem;color:var(--muted)">Žiadne relácie</div>';
+
+  // Udalosti
+  tree.querySelectorAll(".cat-header").forEach(h => {
+    h.addEventListener("click", e => {
+      if (e.target.closest(".cat-del")) return;
+      const id = h.dataset.catid;
+      if (collapsedCats.has(id)) collapsedCats.delete(id);
+      else collapsedCats.add(id);
+      const toggle = h.querySelector(".cat-toggle");
+      const body   = h.nextElementSibling;
+      toggle.classList.toggle("closed");
+      body.classList.toggle("collapsed");
+    });
+  });
+
+  tree.querySelectorAll(".cat-del").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      if (confirm(`Zmazať kategóriu "${btn.closest(".cat-header").querySelector(".cat-name").textContent}"?`))
+        deleteCategory(btn.dataset.catid);
+    });
+  });
+
+  tree.querySelectorAll(".chat-item").forEach(el => {
+    el.addEventListener("click", e => {
+      if (e.target.closest(".chat-move-btn") || e.target.closest(".chat-del-btn")) return;
+      openChat(el.dataset.id);
+    });
+  });
+
+  tree.querySelectorAll(".chat-move-btn").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      showMoveMenu(btn.dataset.id, btn);
+    });
+  });
+
+  tree.querySelectorAll(".chat-del-btn").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      if (confirm("Zmazať tento chat?")) deleteChat(btn.dataset.id);
+    });
+  });
+}
+
+async function openChat(id) {
+  activeChatId = id;
+  const chat = await api(`/api/chats/${id}`);
+  document.getElementById("chat-title").textContent = chat.title.toUpperCase();
+  const sel = document.getElementById("model-select");
+  if (chat.model) sel.value = chat.model;
+  renderMessages(chat.messages);
+  loadChatList();
+}
+
+function renderMessages(messages) {
+  const el = document.getElementById("messages");
+  if (!messages.length) {
+    el.innerHTML = '<div id="empty-state"><div>[ NOVÁ RELÁCIA ]</div><div style="font-size:.6rem;opacity:.4;margin-top:4px">Začni písať alebo použi mikrofón</div></div>';
+    return;
+  }
+  el.innerHTML = messages.map(m => msgHtml(m.role, m.content)).join("");
+  scrollBottom();
+}
+
+function msgHtml(role, content) {
+  const avatar = role === "user" ? "TY" : "🤖";
+  return `<div class="msg ${role}">
+    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-bubble">${escHtml(content)}</div>
+  </div>`;
+}
+
+// ─── New chat ────────────────────────────────────────────────────────────────
+document.getElementById("new-chat-btn").addEventListener("click", async () => {
+  const model = document.getElementById("model-select").value;
+  const chat  = await api("/api/chats", "POST", { title: "Nový chat", model });
+  await openChat(chat.id);
+});
+
+// ─── Send ────────────────────────────────────────────────────────────────────
+document.getElementById("send-btn").addEventListener("click", sendMessage);
+document.getElementById("user-input").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+async function sendMessage() {
+  const input   = document.getElementById("user-input");
+  const content = input.value.trim();
+  if (!content || isStreaming) return;
+
+  if (!activeChatId) {
+    const model = document.getElementById("model-select").value;
+    const chat  = await api("/api/chats", "POST", { title: "Nový chat", model });
+    activeChatId = chat.id; loadChatList();
+  }
+
+  input.value = ""; input.style.height = "";
+  isStreaming = true;
+  clearTimeout(subtitleTimer);
+  document.getElementById('subtitle').classList.remove('active', 'user-speech');
+  setOrbState('thinking'); setWaveMode('idle');
+
+  appendMsg("user", content);
+  const aiEl   = appendMsg("assistant", "");
+  const bubble = aiEl.querySelector(".msg-bubble");
+  bubble.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+
+  const model = document.getElementById("model-select").value;
+  try {
+    const res     = await fetch(`/api/chats/${activeChatId}/message`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ content, model }),
+    });
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let aiText = "";
+    bubble.textContent = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (const line of decoder.decode(value, { stream:true }).split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const json = JSON.parse(line.slice(6));
+          if (json.token) { aiText += json.token; bubble.textContent = aiText; scrollBottom(); }
+          if (json.done)  { loadChatList(); speak(aiText); }
+          if (json.error) { bubble.textContent = "⚠ " + json.error; setOrbState('idle'); setWaveMode('idle'); }
+        } catch {}
+      }
+    }
+  } catch (err) {
+    bubble.textContent = "⚠ Chyba: " + err.message;
+    setOrbState('idle'); setWaveMode('idle');
+  }
+  isStreaming = false;
+}
+
+function appendMsg(role, content) {
+  const el = document.getElementById("messages");
+  el.querySelector("#empty-state")?.remove();
+  const div = document.createElement("div");
+  div.innerHTML = msgHtml(role, content);
+  el.appendChild(div.firstElementChild);
+  scrollBottom();
+  return el.lastElementChild;
+}
+
+// ─── Speech ──────────────────────────────────────────────────────────────────
+function setupSpeech() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    document.getElementById("mic-btn").title   = "STT nie je podporované";
+    document.getElementById("convo-btn").title = "STT nie je podporované";
+  } else {
+    recognition = new SR();
+    recognition.lang = "sk-SK";
+    recognition.interimResults = true;
+
+    recognition.onresult = e => {
+      const t = Array.from(e.results).map(r => r[0].transcript).join("");
+      document.getElementById("user-input").value = t;
+      if (isConvoMode) { clearTimeout(silenceTimer); silenceTimer = setTimeout(() => recognition.stop(), SILENCE_DELAY); }
+      const sub = document.getElementById('subtitle');
+      sub.classList.add('user-speech');
+      updateSubtitle(t);
+    };
+
+    recognition.onend = () => {
+      document.getElementById("mic-btn").classList.remove("active");
+      clearTimeout(silenceTimer);
+      if (isConvoMode && !isStreaming) {
+        const t = document.getElementById("user-input").value.trim();
+        if (t) { setOrbState('thinking'); setWaveMode('idle'); sendMessage(); }
+        else   { startListening(); }
+      } else if (!isConvoMode) {
+        setOrbState('idle'); setWaveMode('idle');
+      }
+    };
+  }
+
+  // ── Voice dropdown ──
+  let allVoices = [];
+  const voiceInp = document.getElementById("voice-select");
+  const voiceDd  = document.getElementById("voice-dropdown");
+
+  function renderVoiceOpts(filter = "") {
+    const q  = filter.toLowerCase();
+    const fv = allVoices.filter(v => !q || v.name.toLowerCase().includes(q) || v.lang.toLowerCase().includes(q));
+    voiceDd.innerHTML = fv.map(v =>
+      `<div class="voice-option${voiceInp.dataset.selected===v.name?' selected':''}" data-name="${v.name}">${v.name} <span style="color:var(--muted);font-size:.7rem">${v.lang}</span></div>`
+    ).join("") || `<div class="voice-option" style="pointer-events:none;opacity:.5">Žiadne výsledky</div>`;
+  }
+
+  function populateVoices() {
+    allVoices = speechSynthesis.getVoices();
+    if (!allVoices.length) return;
+    if (!voiceInp.dataset.selected) {
+      const best = allVoices.find(v => v.name === "Microsoft Lukas Online (Natural) - Slovak (Slovakia)")
+        || allVoices.find(v => /natural|neural/i.test(v.name))
+        || allVoices.find(v => v.lang.startsWith("sk"))
+        || allVoices[0];
+      if (best) { voiceInp.dataset.selected = best.name; voiceInp.value = best.name; }
+    }
+    renderVoiceOpts();
+  }
+
+  voiceInp.addEventListener("click", () => {
+    voiceInp.readOnly = false; voiceInp.select();
+    voiceDd.classList.add("open");
+    renderVoiceOpts(voiceInp.value === voiceInp.dataset.selected ? "" : voiceInp.value);
+  });
+  voiceInp.addEventListener("input", () => renderVoiceOpts(voiceInp.value));
+  voiceDd.addEventListener("mousedown", e => {
+    const opt = e.target.closest(".voice-option");
+    if (!opt?.dataset.name) return;
+    voiceInp.dataset.selected = opt.dataset.name;
+    voiceInp.value = opt.dataset.name;
+    voiceInp.readOnly = true;
+    voiceDd.classList.remove("open");
+  });
+  document.addEventListener("click", e => {
+    if (!e.target.closest("#voice-wrapper")) {
+      voiceInp.value = voiceInp.dataset.selected || "";
+      voiceInp.readOnly = true;
+      voiceDd.classList.remove("open");
+    }
+  });
+  populateVoices();
+  speechSynthesis.onvoiceschanged = populateVoices;
+}
+
+function startListening() {
+  if (!recognition) return;
+  recognition.continuous = true;
+  document.getElementById("mic-btn").classList.add("active");
+  setOrbState('listening');
+  waveLastSignal = Date.now(); // reset — hneď ukáže keď príde zvuk
+  initMicAudio().then(() => setWaveMode('mic'));
+  try { recognition.start(); } catch {}
+}
+
+document.getElementById("mic-btn").addEventListener("click", () => {
+  if (!recognition) return;
+  const btn = document.getElementById("mic-btn");
+  if (btn.classList.contains("active")) {
+    recognition.stop(); setOrbState('idle'); setWaveMode('idle');
+  } else {
+    recognition.continuous = true; btn.classList.add("active");
+    setOrbState('listening');
+    initMicAudio().then(() => setWaveMode('mic'));
+    recognition.start();
+  }
+});
+
+document.getElementById("convo-btn").addEventListener("click", () => {
+  if (!recognition) return;
+  isConvoMode = !isConvoMode;
+  const btn = document.getElementById("convo-btn");
+  btn.classList.toggle("active", isConvoMode);
+  btn.title = isConvoMode ? "Režim rozhovoru — AKTÍVNY" : "Režim rozhovoru";
+  document.body.classList.toggle("convo-mode", isConvoMode);
+  if (isConvoMode) { startListening(); }
+  else { speechSynthesis.cancel(); recognition.stop(); setOrbState('idle'); setWaveMode('idle'); }
+});
+
+// ─── Voice bar ────────────────────────────────────────────────────────────────
+document.getElementById("stop-tts-btn").addEventListener("click", () => {
+  speechSynthesis.cancel(); setOrbState('idle'); setWaveMode('idle');
+});
+
+document.getElementById("tts-toggle").addEventListener("click", () => {
+  ttsEnabled = !ttsEnabled;
+  const btn = document.getElementById("tts-toggle");
+  btn.textContent = ttsEnabled ? "🔊" : "🔇";
+  btn.title       = ttsEnabled ? "Čítanie zapnuté" : "Čítanie vypnuté";
+  btn.classList.toggle("active", !ttsEnabled);
+  if (!ttsEnabled) { speechSynthesis.cancel(); setOrbState('idle'); setWaveMode('idle'); }
+});
+const rateSlider = document.getElementById("rate-slider");
+const rateValue  = document.getElementById("rate-value");
+rateSlider.addEventListener("input", () => {
+  rateValue.textContent = parseFloat(rateSlider.value).toFixed(1) + "×";
+});
+
+// ─── TTS ─────────────────────────────────────────────────────────────────────
+function speak(text) {
+  if (!window.speechSynthesis || !text || !ttsEnabled) return;
+  speechSynthesis.cancel();
+  setOrbState('speaking'); setWaveMode('tts');
+  const clipped = text.slice(0, 800);
+  const utter   = new SpeechSynthesisUtterance(clipped);
+  const voices  = speechSynthesis.getVoices();
+  const name    = document.getElementById("voice-select").dataset.selected;
+  const voice   = voices.find(v => v.name === name);
+  if (voice) utter.voice = voice;
+  utter.rate  = parseFloat(rateSlider.value);
+  utter.pitch = 1.0;
+
+  // Rozdeľ text na vety pre dynamické titulky
+  const sentenceRe = /[^.!?…\n]+[.!?…\n]*/g;
+  const sentences  = clipped.match(sentenceRe) || [clipped];
+  const sentStarts = [];
+  let pos = 0;
+  sentences.forEach(s => { sentStarts.push(pos); pos += s.length; });
+
+  utter.onboundary = e => {
+    if (e.name !== 'word' && e.name !== 'sentence') return;
+    const ci = e.charIndex;
+    let si = 0;
+    for (let i = 0; i < sentStarts.length; i++) {
+      if (sentStarts[i] <= ci) si = i; else break;
+    }
+    const sub = document.getElementById('subtitle');
+    sub.classList.remove('user-speech');
+    updateSubtitle(sentences[si]?.trim() || '');
+  };
+
+  utter.onend = () => {
+    setOrbState(isConvoMode ? 'listening' : 'idle');
+    setWaveMode(isConvoMode ? 'mic' : 'idle');
+    if (isConvoMode) startListening();
+    fadeSubtitle(1500);
+  };
+  speechSynthesis.speak(utter);
+}
+
+// ─── Subtitle (titulky) ───────────────────────────────────────────────────────
+function updateSubtitle(text) {
+  const sub = document.getElementById('subtitle');
+  clearTimeout(subtitleTimer);
+  sub.textContent = text;
+  sub.classList.add('active');
+}
+function fadeSubtitle(delay = 2500) {
+  clearTimeout(subtitleTimer);
+  subtitleTimer = setTimeout(() => {
+    document.getElementById('subtitle').classList.remove('active');
+  }, delay);
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+function scrollBottom() { const el=document.getElementById("messages"); el.scrollTop=el.scrollHeight; }
+function escHtml(str)   { return str?.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")??"";}
+async function api(url, method="GET", body=null) {
+  const opts={method,headers:{"Content-Type":"application/json"}};
+  if(body) opts.body=JSON.stringify(body);
+  return (await fetch(url,opts)).json();
+}
+document.getElementById("user-input").addEventListener("input", function() {
+  this.style.height=""; this.style.height=Math.min(this.scrollHeight,300)+"px";
+});
+
+init();
+// Predvolené rozloženie: Trubis maximalizovaný, chat skrytý
+document.getElementById("chat-toggle").click();
+document.getElementById("chat-vis-btn").click();
+</script>
+</body>
+</html>
